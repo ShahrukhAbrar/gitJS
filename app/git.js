@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const zlib = require("zlib");
+const crypto = require("crypto");
 
 console.error("Logs from your program will appear here!");
 
@@ -13,6 +14,9 @@ switch (command) {
   case "cat-file":
     const hash = process.argv[4];
     catFiles(hash);
+    break;
+  case "hash-object":
+    hashObject();
     break;
   default:
     throw new Error(`Unknown command ${command}`);
@@ -33,20 +37,54 @@ function createGitDirectory() {
 }
 
 async function catFiles(hash) {
-  const content = await fs.readFileSync(
+  const compressed = await fs.promises.readFile(
     path.join(process.cwd(), ".git", "objects", hash.slice(0, 2), hash.slice(2))
   );
-  const data = zlib.inflateSync(content).toString();
-  var res = "";
+
+  const fullData = zlib.inflateSync(compressed);
+
+  const nullByteIndex = fullData.indexOf(0);
+  const header = fullData.slice(0, nullByteIndex).toString();
+  const body = fullData.slice(nullByteIndex + 1);
+
+  let res = "";
   if (process.argv[3] === "-t") {
-    res = data.split(" ")[0];
+    res = header.split(" ")[0];
+    process.stdout.write(res);
   } else if (process.argv[3] === "-s") {
-    res = data.split("\x00")[0];
-    res = res.split(" ")[1];
+    res = header.split(" ")[1];
+    process.stdout.write(res);
   } else if (process.argv[3] === "-p") {
-    res = data.split("\0")[1];
+    process.stdout.write(body);
   } else {
-    res = "missing arg";
+    process.stdout.write("missing arg");
   }
-  process.stdout.write(res);
+}
+
+async function hashObject() {
+  var fileName;
+
+  if (process.argv[3] == "-w") {
+    fileName = process.argv[4];
+  } else {
+    fileName = process.argv[3];
+  }
+  var fileSize = (await fs.promises.stat(fileName)).size.toString();
+  const content = fs.readFileSync(fileName);
+  const header = `blob ${fileSize}\x00${content.toString()}`;
+  fileHash = crypto.createHash("sha1").update(header).digest("hex");
+
+  if (process.argv[3] == "-w") {
+    var folderName = fileHash.slice(0, 2);
+    var objectName = fileHash.slice(2);
+
+    await fs.promises.mkdir(`.git/objects/${folderName}`, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(process.cwd(), ".git", "objects", folderName, objectName),
+      zlib.deflateSync(header)
+    );
+  }
+
+  process.stdout.write(fileHash);
 }
