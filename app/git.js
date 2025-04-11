@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const zlib = require("zlib");
 const crypto = require("crypto");
+const { log } = require("console");
 
 console.error("Logs from your program will appear here!");
 
@@ -17,6 +18,9 @@ switch (command) {
     break;
   case "hash-object":
     hashObject();
+    break;
+  case "ls-tree":
+    lsTree();
     break;
   default:
     throw new Error(`Unknown command ${command}`);
@@ -87,4 +91,27 @@ async function hashObject() {
   }
 
   process.stdout.write(fileHash);
+}
+
+async function lsTree() {
+  if (process.argv[3] == "--name-only") {
+    hash = process.argv[4];
+  } else {
+    hash = process.argv[3];
+  }
+
+  const compressed = fs.readFileSync(
+    path.join(process.cwd(), ".git", "objects", hash.slice(0, 2), hash.slice(2))
+  );
+
+  var content = zlib.inflateSync(compressed);
+  content = content.toString("utf8").split("\0");
+
+  var data = content.slice(1);
+  const names = data
+    .filter((line) => line.includes(" "))
+    .map((line) => line.split(" ")[1]);
+  const namesString = names.join("\n");
+  const response = namesString.concat("\n");
+  process.stdout.write(response.replace(/\n\n/g, "\n"));
 }
